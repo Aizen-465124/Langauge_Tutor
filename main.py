@@ -1,10 +1,11 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from transformers import MarianMTModel, MarianTokenizer
 
 def read_file(file_path):
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             content = file.read()
-            return content
+            return content.split()
     except FileNotFoundError:
         print(f"The file {file_path} does not exist.")
     except UnicodeDecodeError as e:
@@ -21,29 +22,36 @@ def translate_word(word, model, tokenizer):
         print(f"An error occurred during translation: {e}")
         return word  # return the original word if translation fails
 
-def read_and_translate_file(content):
-    """
-    Processes the content of a file, extracts every fourth word,
-    and translates it to the desired language (Spanish in this case).
+def translate_fourth_words(content, model, tokenizer):
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(translate_word, content[i], model, tokenizer): i for i in range(3, len(content), 4)}
+        for future in as_completed(futures):
+            idx = futures[future]
+            content[idx] = future.result()
 
-    :param content: The content of the file as a string.
+def read_and_translate_file(file_path):
+    """
+    Reads a file, processes the content to extract every fourth word,
+    and translates those words to the desired language (Spanish in this case).
+
+    :param file_path: Path to the file to read.
     :return: The modified content with every fourth word translated.
     """
-    
+    content = read_file(file_path)
+    if content is None:
+        return None
+
     # Initialize the translation model and tokenizer
     model_name = "Helsinki-NLP/opus-mt-en-es"
     tokenizer = MarianTokenizer.from_pretrained(model_name)
     model = MarianMTModel.from_pretrained(model_name)
     
-    words = content.split()
-    for i in range(3, len(words), 4):  # Start at the 4th word and step by 4
-        words[i] = translate_word(words[i], model, tokenizer)
+    translate_fourth_words(content, model, tokenizer)
     
-    return ' '.join(words)
+    return content
 
 # Example usage
 file_path = 'sample.txt'
-content = read_file(file_path)
+content = read_and_translate_file(file_path)
 if content:
-    translated_content = read_and_translate_file(content)
-    print(translated_content)
+    print(*content)
